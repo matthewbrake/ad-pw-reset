@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: azure-password-notifier
+    ports:
+      # Maps host port (defined in .env or default 3000) to container port 80
+      - "${WEB_PORT:-3000}:80"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
