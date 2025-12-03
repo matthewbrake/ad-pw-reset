@@ -1,8 +1,8 @@
-
 export interface User {
   id: string;
   displayName: string;
   userPrincipalName: string;
+  accountEnabled?: boolean; // Added
   passwordLastSetDateTime: string;
   passwordExpiresInDays: number;
   assignedGroups?: string[];
@@ -20,7 +20,7 @@ export interface SmtpConfig {
   secure: boolean;
   username: string;
   password: string;
-  fromEmail: string; // Added fromEmail
+  fromEmail: string;
 }
 
 export enum Cadence {

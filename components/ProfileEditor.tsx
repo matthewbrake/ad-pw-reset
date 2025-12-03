@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { NotificationProfile } from '../types';
 
@@ -34,7 +33,7 @@ Your IT Team`,
     }
   }, [profile]);
 
-  // FIX: Using trailing comma <K extends ...,> tells the JSX parser this is a generic type, not an element
+  // FIX: Added comma to generic type to satisfy TSX parser
   const handleChange = <K extends keyof NotificationProfile,>(key: K, value: NotificationProfile[K]) => {
     setFormData(prev => ({ ...prev, [key]: value }));
   };

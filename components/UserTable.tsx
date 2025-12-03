@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { User } from '../types';
 
@@ -14,6 +13,7 @@ const UserTable: React.FC<{ users: User[] }> = ({ users }) => {
       const aVal = a[sortKey];
       const bVal = b[sortKey];
 
+      if (aVal === undefined || bVal === undefined) return 0;
       if (aVal < bVal) return -1;
       if (aVal > bVal) return 1;
       return 0;
@@ -46,7 +46,7 @@ const UserTable: React.FC<{ users: User[] }> = ({ users }) => {
   const TableHeader = ({ columnKey, label }: { columnKey: SortKey, label: string }) => (
     <th
         scope="col"
-        className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
+        className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white"
         onClick={() => handleSort(columnKey)}
     >
         <div className="flex items-center space-x-1">
@@ -63,6 +63,7 @@ const UserTable: React.FC<{ users: User[] }> = ({ users }) => {
                 <tr>
                     <TableHeader columnKey="displayName" label="Display Name" />
                     <TableHeader columnKey="userPrincipalName" label="Email" />
+                    <TableHeader columnKey="accountEnabled" label="Enabled" />
                     <TableHeader columnKey="passwordLastSetDateTime" label="Password Last Set" />
                     <TableHeader columnKey="passwordExpiresInDays" label="Expires In (Days)" />
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
@@ -72,10 +73,18 @@ const UserTable: React.FC<{ users: User[] }> = ({ users }) => {
                 {sortedUsers.map(user => {
                     const status = getStatus(user.passwordExpiresInDays);
                     return (
-                        <tr key={user.id} className="hover:bg-gray-700/50">
+                        <tr key={user.id} className="hover:bg-gray-700/50 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{user.displayName}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.userPrincipalName}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{new Date(user.passwordLastSetDateTime).toLocaleDateString()}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                {user.accountEnabled ? 
+                                    <span className="text-green-400">Yes</span> : 
+                                    <span className="text-red-400">No</span>
+                                }
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                {user.passwordLastSetDateTime ? new Date(user.passwordLastSetDateTime).toLocaleDateString() : 'Never'}
+                            </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-white">{user.passwordExpiresInDays}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm">
                                 <span className={`px-3 py-1 text-xs font-semibold rounded-full ${status.className}`}>{status.text}</span>

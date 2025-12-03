@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { GraphApiConfig, SmtpConfig } from '../types';
-import { validateGraphPermissions, testSmtpConnection, log } from '../services/mockApi';
+import { validateGraphPermissions, testSmtpConnection, log, saveBackendConfig } from '../services/mockApi';
 import { CheckCircleIcon, XCircleIcon, AlertTriangleIcon } from './icons';
 
 interface SettingsProps {
@@ -64,20 +63,26 @@ const Settings: React.FC<SettingsProps> = ({ toggleConsole }) => {
   const handleValidatePermissions = async () => {
     setTestingGraph(true);
     setGraphTestResult(null);
-    log('info', 'User requested Permission Validation...');
+    if(toggleConsole) toggleConsole();
+    
+    // Save first then test
+    await saveBackendConfig(graphConfig, smtpConfig);
     const result = await validateGraphPermissions(graphConfig);
+    
     setGraphTestResult(result);
     setTestingGraph(false);
-    if(toggleConsole) toggleConsole(); // Open console to show detailed check
   };
 
   const handleTestSmtp = async () => {
     setTestingSmtp(true);
     setSmtpTestResult(null);
+    if(toggleConsole) toggleConsole();
+
+    await saveBackendConfig(graphConfig, smtpConfig);
     const result = await testSmtpConnection(smtpConfig);
+    
     setSmtpTestResult(result);
     setTestingSmtp(false);
-    if(toggleConsole) toggleConsole();
   };
 
   return (
@@ -87,13 +92,12 @@ const Settings: React.FC<SettingsProps> = ({ toggleConsole }) => {
           <button onClick={() => setShowHelp(true)} className="text-primary-400 text-sm hover:underline">How do I get these IDs?</button>
       </div>
 
-      {/* Graph API Settings */}
       <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
         <h3 className="text-xl font-semibold mb-4 flex items-center space-x-2">
             <span>Azure AD App Registration</span>
-            <span className="text-xs bg-blue-900 text-blue-200 px-2 py-1 rounded">Required</span>
+            <span className="text-xs bg-blue-900 text-blue-200 px-2 py-1 rounded">Client Credentials Flow</span>
         </h3>
-        <p className="text-gray-400 text-sm mb-6">Enter the credentials from your Azure AD App Registration to allow the application to scan for expiring passwords.</p>
+        <p className="text-gray-400 text-sm mb-6">Enter the credentials from your Azure AD App Registration. The backend will use these to securely authenticate as a Daemon service.</p>
         
         <div className="space-y-4">
           <InputField label="Tenant ID (Directory ID)" name="tenantId" value={graphConfig.tenantId} onChange={handleGraphChange} placeholder="e.g., contoso.onmicrosoft.com"/>
@@ -109,10 +113,10 @@ const Settings: React.FC<SettingsProps> = ({ toggleConsole }) => {
             {testingGraph ? (
                 <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Validating Permissions...</span>
+                    <span>Validating...</span>
                 </>
             ) : (
-                <span>Validate & Check Permissions</span>
+                <span>Save & Validate Permissions</span>
             )}
           </button>
         </div>
@@ -124,7 +128,6 @@ const Settings: React.FC<SettingsProps> = ({ toggleConsole }) => {
         )}
       </div>
 
-      {/* SMTP Settings */}
       <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
         <h3 className="text-xl font-semibold mb-4">SMTP Server</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -144,7 +147,7 @@ const Settings: React.FC<SettingsProps> = ({ toggleConsole }) => {
             disabled={testingSmtp}
             className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 disabled:bg-gray-500 disabled:cursor-not-allowed"
           >
-            {testingSmtp ? 'Connecting...' : 'Test Connection'}
+            {testingSmtp ? 'Connecting...' : 'Save & Test Connection'}
           </button>
         </div>
         {smtpTestResult && (
@@ -155,19 +158,17 @@ const Settings: React.FC<SettingsProps> = ({ toggleConsole }) => {
         )}
       </div>
 
-        {/* Help Modal */}
         {showHelp && (
             <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
                 <div className="bg-gray-800 p-8 rounded-lg max-w-lg w-full">
-                    <h3 className="text-xl font-bold mb-4">How to create an App Registration</h3>
-                    <ol className="list-decimal list-inside space-y-2 text-gray-300 mb-6">
-                        <li>Go to the <a href="https://portal.azure.com/#view/Microsoft_AAD_IAM/ActiveDirectoryMenuBlade/~/RegisteredApps" target="_blank" className="text-primary-400 underline">Azure Portal</a>.</li>
-                        <li>Click <strong>New Registration</strong>. Name it "Password Notifier".</li>
-                        <li>Go to <strong>API Permissions</strong> &rarr; <strong>Add a permission</strong> &rarr; <strong>Microsoft Graph</strong> &rarr; <strong>Application permissions</strong>.</li>
-                        <li>Select <code>User.Read.All</code> and <code>Group.Read.All</code>.</li>
-                        <li><strong>IMPORTANT:</strong> Click "Grant admin consent".</li>
-                        <li>Go to <strong>Certificates & secrets</strong> and create a New Client Secret.</li>
-                        <li>Copy the ID and Secret into this form.</li>
+                    <h3 className="text-xl font-bold mb-4">App Registration Guide</h3>
+                    <p className="mb-2 text-sm text-gray-400">Since this is a background service, it requires <strong>Application Permissions</strong>.</p>
+                    <ol className="list-decimal list-inside space-y-2 text-gray-300 mb-6 text-sm">
+                        <li>Azure Portal &rarr; App registrations &rarr; New registration.</li>
+                        <li><strong>API Permissions</strong> &rarr; Add &rarr; Graph &rarr; <strong>Application permissions</strong>.</li>
+                        <li>Select <code>User.Read.All</code> (Required).</li>
+                        <li><strong>Grant admin consent</strong> (Required).</li>
+                        <li>Create a Client Secret.</li>
                     </ol>
                     <button onClick={() => setShowHelp(false)} className="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded text-white">Close</button>
                 </div>
