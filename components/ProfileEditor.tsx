@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { NotificationProfile } from '../types';
 
@@ -33,7 +34,8 @@ Your IT Team`,
     }
   }, [profile]);
 
-  const handleChange = <K extends keyof NotificationProfile>(key: K, value: NotificationProfile[K]) => {
+  // FIX: Using trailing comma <K extends ...,> tells the JSX parser this is a generic type, not an element
+  const handleChange = <K extends keyof NotificationProfile,>(key: K, value: NotificationProfile[K]) => {
     setFormData(prev => ({ ...prev, [key]: value }));
   };
 
@@ -100,7 +102,6 @@ Your IT Team`,
               <div>
                 <label className="block text-sm font-medium text-gray-300">Email Template</label>
                 <textarea rows={10} value={formData.emailTemplate} onChange={e => handleChange('emailTemplate', e.target.value)} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"></textarea>
-                {/* FIX: The JSX parser misinterprets the double curly braces in the string literal. Wrapping the string content in a Javascript expression (`{`...`}`) prevents this parsing error. */}
                 <p className="text-xs text-gray-500 mt-1">{`Available placeholders: '{{user.displayName}}', '{{user.userPrincipalName}}', '{{password.expiresInDays}}'`}</p>
               </div>
             </div>

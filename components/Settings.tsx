@@ -9,6 +9,21 @@ interface SettingsProps {
     toggleConsole?: () => void;
 }
 
+const InputField = ({ label, name, value, onChange, type = 'text', placeholder = '' }: {label:string, name:string, value:string|number, onChange:(e: React.ChangeEvent<HTMLInputElement>) => void, type?:string, placeholder?: string}) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
+        <input
+            type={type}
+            id={name}
+            name={name}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+        />
+    </div>
+);
+
 const Settings: React.FC<SettingsProps> = ({ toggleConsole }) => {
   const [graphConfig, setGraphConfig] = useLocalStorage<GraphApiConfig>('graphApiConfig', {
     tenantId: '',
@@ -64,21 +79,6 @@ const Settings: React.FC<SettingsProps> = ({ toggleConsole }) => {
     setTestingSmtp(false);
     if(toggleConsole) toggleConsole();
   };
-  
-  const InputField = ({ label, name, value, onChange, type = 'text', placeholder = '' }: {label:string, name:string, value:string|number, onChange:(e: React.ChangeEvent<HTMLInputElement>) => void, type?:string, placeholder?: string}) => (
-      <div>
-          <label htmlFor={name} className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
-          <input
-              type={type}
-              id={name}
-              name={name}
-              value={value}
-              onChange={onChange}
-              placeholder={placeholder}
-              className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-          />
-      </div>
-  );
 
   return (
     <div className="space-y-8">
@@ -163,7 +163,7 @@ const Settings: React.FC<SettingsProps> = ({ toggleConsole }) => {
                     <ol className="list-decimal list-inside space-y-2 text-gray-300 mb-6">
                         <li>Go to the <a href="https://portal.azure.com/#view/Microsoft_AAD_IAM/ActiveDirectoryMenuBlade/~/RegisteredApps" target="_blank" className="text-primary-400 underline">Azure Portal</a>.</li>
                         <li>Click <strong>New Registration</strong>. Name it "Password Notifier".</li>
-                        <li>Go to <strong>API Permissions</strong> -> <strong>Add a permission</strong> -> <strong>Microsoft Graph</strong> -> <strong>Application permissions</strong>.</li>
+                        <li>Go to <strong>API Permissions</strong> &rarr; <strong>Add a permission</strong> &rarr; <strong>Microsoft Graph</strong> &rarr; <strong>Application permissions</strong>.</li>
                         <li>Select <code>User.Read.All</code> and <code>Group.Read.All</code>.</li>
                         <li><strong>IMPORTANT:</strong> Click "Grant admin consent".</li>
                         <li>Go to <strong>Certificates & secrets</strong> and create a New Client Secret.</li>
