@@ -1,4 +1,4 @@
-import { User, GraphApiConfig, SmtpConfig, NotificationProfile, LogEntry } from '../types';
+import { User, GraphApiConfig, SmtpConfig, NotificationProfile, LogEntry, PermissionResult } from '../types';
 
 // --- LOGGER SERVICE (Client Side View) ---
 let listeners: ((log: LogEntry) => void)[] = [];
@@ -10,7 +10,6 @@ export const log = (level: LogEntry['level'], message: string, details?: any) =>
         message,
         details
     };
-    // Emit to listeners (ConsoleLog component)
     listeners.forEach(l => l(entry));
 };
 
@@ -45,8 +44,7 @@ export const saveBackendConfig = async (config: GraphApiConfig, smtp: SmtpConfig
     return response.json();
 };
 
-export const validateGraphPermissions = async (config: GraphApiConfig): Promise<{ success: boolean; message: string }> => {
-  // First save config so backend can use it
+export const validateGraphPermissions = async (config: GraphApiConfig): Promise<{ success: boolean; results?: PermissionResult; message: string }> => {
   await saveBackendConfig(config, { host: '', port: 0, secure: false, username: '', password: '', fromEmail: '' });
   
   log('info', 'Validating Permissions on Backend...');
@@ -60,7 +58,6 @@ export const validateGraphPermissions = async (config: GraphApiConfig): Promise<
 };
 
 export const testSmtpConnection = async (config: SmtpConfig): Promise<{ success: boolean; message: string }> => {
-    // Save first
     await saveBackendConfig({ tenantId: '', clientId: '', clientSecret: '' }, config);
 
     log('info', 'Testing SMTP...');
@@ -84,18 +81,11 @@ export const runNotificationJob = async (profileId: string, isTestRun: boolean =
     
     const data = await response.json();
     
-    // Ingest server logs into client console
     if (data.logs && Array.isArray(data.logs)) {
         data.logs.forEach((l: any) => log(l.level, l.message, l.details));
     }
 };
 
-// --- CLIENT SIDE PROFILE MOCK (Keep profiles in local storage for now as requested for simplicity, or could move to backend) ---
-// For this iteration, we keep profiles in local storage but the JOB runs on server.
-// The server would normally fetch these from DB.
-// To keep the change minimal as requested: We will assume the server "Mock" runs based on the user list it sees.
-
-// Helper to keep Profiles working in UI
 const MOCK_PROFILES_KEY = 'notification_profiles';
 const getProfiles = (): NotificationProfile[] => {
     const s = localStorage.getItem(MOCK_PROFILES_KEY);

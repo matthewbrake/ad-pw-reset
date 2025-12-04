@@ -2,7 +2,7 @@ export interface User {
   id: string;
   displayName: string;
   userPrincipalName: string;
-  accountEnabled?: boolean; // Added
+  accountEnabled?: boolean; 
   passwordLastSetDateTime: string;
   passwordExpiresInDays: number;
   assignedGroups?: string[];
@@ -12,6 +12,14 @@ export interface GraphApiConfig {
   tenantId: string;
   clientId: string;
   clientSecret: string;
+  defaultExpiryDays?: number;
+}
+
+export interface PermissionResult {
+    auth: boolean;
+    userRead: boolean;
+    groupRead: boolean;
+    message: string;
 }
 
 export interface SmtpConfig {

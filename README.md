@@ -1,45 +1,72 @@
 # Azure AD Password Expiry Notifier
 
-A Dockerized React application to monitor Azure Active Directory user password expirations and send configurable email notifications.
+A web application to monitor Azure Active Directory user password expirations and send configurable email notifications.
 
-## 🚀 Quick Start (Docker)
+## ⚡️ Manual Run (NPM) - Copy & Paste
 
-You can run this application quickly using Docker Compose.
+If you do not want to use Docker, you can run this directly on your machine using Node.js.
 
-1. **Clone the repository.**
-2. **Run with Docker Compose:**
-   By default, it runs on port 3000.
-   ```bash
-   docker-compose up -d
-   ```
+### 1. Install & Build
+```bash
+# Install dependencies
+npm install
 
-3. **Custom Port:**
-   If you want to run it on a different port (e.g., 8080):
-   ```bash
-   WEB_PORT=8080 docker-compose up -d
-   ```
+# Build the frontend (React -> static files)
+npm run build
+```
 
-4. **Access the App:**
-   Open your browser to `http://localhost:3000` (or your custom port).
+### 2. Run the Server
+You can specify the port using the `PORT` environment variable.
 
-## 🏗 Architecture & Logic
+**Linux/Mac:**
+```bash
+# Run on default port 3000
+npm start
 
-### How it Connects to Azure (The Logic)
-1. **Authentication:** The application uses the **Client Credentials Flow**. You provide a Tenant ID, Client ID, and Client Secret.
-2. **Token Request:** The app exchanges these credentials for a JWT Access Token via `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token`.
-3. **Graph API:** With the token, it queries the **Microsoft Graph API** (`https://graph.microsoft.com/v1.0/users`) to fetch:
-   - `userPrincipalName` (Email)
-   - `passwordPolicies`
-   - `lastPasswordChangeDateTime`
+# Run on port 8080
+PORT=8080 npm start
+```
 
-### Permissions Required
-To function correctly, your Azure App Registration needs the following **Application Permissions**:
-*   `User.Read.All` (To read password expiration dates)
-*   `Group.Read.All` (If you want to filter by Groups)
+**Windows (PowerShell):**
+```powershell
+# Run on port 8080
+$env:PORT=8080; npm start
+```
 
-### Safeguards
-*   **Test Mode:** In the Profiles tab, you can "Test Run" a profile. This calculates the logic but **overrides the recipient** to send the email ONLY to you (the admin) instead of the actual users.
-*   **Logging:** Toggle the "Live Console" in the UI to see exactly what logic the application is performing (Fetch -> Filter -> Check Expiry -> Send).
+## 🐳 Docker Run
 
-## 🛠 Deployment
-This is a standard React SPA. The Dockerfile builds the static assets and serves them via Nginx.
+### Quick Start
+```bash
+docker-compose up -d --build
+```
+
+### Change Port (Env Var)
+To run the container on port **8080** instead of 3000:
+```bash
+WEB_PORT=8080 docker-compose up -d
+```
+
+## 🔑 Authentication & Permissions (How it works)
+
+This app runs as a **Background Service** (Daemon). It does not use your personal user account to run the daily checks; it uses an **App Registration**.
+
+### 1. The "Sign In" Button (Admin Consent)
+In the **Settings** tab, there is a **"Grant Admin Consent"** button.
+*   **What it does:** It opens a Microsoft popup where you sign in as a Global Admin.
+*   **Why:** You click "Accept" once. This gives the *App Registration* permission to read users.
+*   **Result:** You can now close the browser, and the app will still work 24/7 because it uses the Client Secret to "login" as the App itself.
+
+### 2. Required Permissions
+The app needs these **Application Permissions** (not Delegated):
+*   `User.Read.All` (To calculate password expiry)
+*   `Group.Read.All` (To filter by assigned groups)
+
+### 3. Traffic Light System
+The Settings page has a "Validate" button that checks 3 things:
+1.  **Auth:** Are Client ID/Secret correct?
+2.  **User Read:** Can the app read users?
+3.  **Group Read:** Can the app read groups?
+
+## 🛡 Safeguards
+*   **Test Mode:** When running a "Test" profile, emails are **forced** to the Admin email defined in the settings. They are NOT sent to real users.
+*   **Logs:** Click "Show Console" in the bottom left to see the live logic execution.

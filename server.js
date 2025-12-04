@@ -28,6 +28,7 @@ let runtimeConfig = {
     tenantId: process.env.AZURE_TENANT_ID || '',
     clientId: process.env.AZURE_CLIENT_ID || '',
     clientSecret: process.env.AZURE_CLIENT_SECRET || '',
+    defaultExpiryDays: 90,
     smtp: {
         host: process.env.SMTP_HOST || '',
         port: process.env.SMTP_PORT || 587,
@@ -42,7 +43,8 @@ let runtimeConfig = {
 if (fs.existsSync(CONFIG_FILE)) {
     try {
         const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-        runtimeConfig = { ...runtimeConfig, ...saved };
+        // Merge to keep defaults if keys missing
+        runtimeConfig = { ...runtimeConfig, ...saved, smtp: { ...runtimeConfig.smtp, ...saved.smtp } };
         console.log("Loaded configuration from disk.");
     } catch (e) {
         console.error("Failed to load config file:", e);
@@ -50,8 +52,6 @@ if (fs.existsSync(CONFIG_FILE)) {
 }
 
 // --- HELPER: LOGGING ---
-// In a real app, use websockets or SSE. For now, we print to stdout, 
-// and the frontend can poll a log endpoint if needed, or we just return logs in response.
 const log = (level, message, details = null) => {
     const timestamp = new Date().toISOString();
     console.log(`[${level.toUpperCase()}] ${message}`);
@@ -76,8 +76,11 @@ const getGraphToken = async () => {
         const response = await axios.post(tokenEndpoint, params);
         return response.data.access_token;
     } catch (error) {
-        console.error("Token Error:", error.response?.data || error.message);
-        throw new Error("Failed to authenticate with Azure AD. Check Tenant/Client ID and Secret.");
+        // Determine if it's an auth error or network error
+        if (error.response) {
+            throw new Error(`Auth Failed: ${error.response.data.error_description || error.response.statusText}`);
+        }
+        throw new Error("Network failed connecting to Azure Login.");
     }
 };
 
@@ -85,8 +88,8 @@ const getGraphToken = async () => {
 
 // Save Config
 app.post('/api/config', (req, res) => {
-    const { tenantId, clientId, clientSecret, smtp } = req.body;
-    runtimeConfig = { ...runtimeConfig, tenantId, clientId, clientSecret, smtp };
+    const { tenantId, clientId, clientSecret, smtp, defaultExpiryDays } = req.body;
+    runtimeConfig = { ...runtimeConfig, tenantId, clientId, clientSecret, defaultExpiryDays, smtp };
     
     // Save to disk
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(runtimeConfig, null, 2));
@@ -116,9 +119,7 @@ app.get('/api/users', async (req, res) => {
             }
         });
 
-        // Simple Password Expiry Logic (Assume 90 days if not set in passwordPolicies)
-        // Note: Real world requires checking domain password policy. Here we simulate or use a default.
-        const DEFAULT_EXPIRY_DAYS = 90;
+        const DEFAULT_EXPIRY_DAYS = parseInt(runtimeConfig.defaultExpiryDays) || 90;
         
         const users = response.data.value.map(u => {
             let lastSet = u.lastPasswordChangeDateTime || u.createdDateTime; // Fallback to creation
@@ -142,7 +143,7 @@ app.get('/api/users', async (req, res) => {
                 accountEnabled: u.accountEnabled,
                 passwordLastSetDateTime: lastSet,
                 passwordExpiresInDays: expiresInDays,
-                assignedGroups: [] // Group fetching requires separate calls, skipped for "Basic" requirement
+                assignedGroups: [] 
             };
         });
 
@@ -153,18 +154,50 @@ app.get('/api/users', async (req, res) => {
     }
 });
 
-// Validate Permissions
+// Validate Permissions (The Traffic Light System)
 app.post('/api/validate-permissions', async (req, res) => {
+    const results = {
+        auth: false,
+        userRead: false,
+        groupRead: false,
+        message: ''
+    };
+
+    let token = '';
+
+    // 1. Check Auth (Get Token)
     try {
-        const token = await getGraphToken();
-        // Try to read users as a test
+        token = await getGraphToken();
+        results.auth = true;
+    } catch (e) {
+        results.message = "Authentication Failed: " + e.message;
+        return res.json({ success: false, results });
+    }
+
+    // 2. Check User Read
+    try {
         await axios.get('https://graph.microsoft.com/v1.0/users?$top=1', {
             headers: { Authorization: `Bearer ${token}` }
         });
-        res.json({ success: true, message: "Connection Successful. App has User.Read.All permission." });
-    } catch (error) {
-        res.json({ success: false, message: "Permission Check Failed. Ensure 'User.Read.All' is granted." });
+        results.userRead = true;
+    } catch (e) {
+        // User read failed
     }
+
+    // 3. Check Group Read
+    try {
+        await axios.get('https://graph.microsoft.com/v1.0/groups?$top=1', {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        results.groupRead = true;
+    } catch (e) {
+        // Group read failed
+    }
+
+    const allGood = results.auth && results.userRead && results.groupRead;
+    results.message = allGood ? "All Systems Go" : "Some permissions are missing.";
+    
+    res.json({ success: allGood, results });
 });
 
 // Test SMTP
@@ -216,14 +249,21 @@ app.post('/api/run-job', async (req, res) => {
         });
 
         for (const user of users) {
-            // Simplified logic: Send to first 5 users for demo or specific ones
-            if (emailsSent < 5 && user.accountEnabled) {
+            // SAFEGUARD: Only process enabled accounts
+            if (!user.accountEnabled) continue;
+
+            // Simplified selection logic for demo
+            if (emailsSent < 5) {
+                // SAFEGUARD: Override email if test run
                 const recipient = isTestRun ? testEmail : user.userPrincipalName;
                 
-                // SafeGuard
                 if (!recipient) continue;
 
-                logs.push(log('info', `Preparing email for ${user.displayName}...`, { recipient }));
+                logs.push(log('info', `Processing ${user.displayName}...`, { 
+                    realEmail: user.userPrincipalName, 
+                    targetEmail: recipient,
+                    mode: isTestRun ? 'TEST' : 'LIVE'
+                }));
                 
                 try {
                     await transporter.sendMail({
@@ -254,6 +294,8 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Env: ${process.env.NODE_ENV}`);
+    console.log(`=========================================`);
+    console.log(` SERVER RUNNING on PORT: ${PORT}`);
+    console.log(` Local: http://localhost:${PORT}`);
+    console.log(`=========================================`);
 });
