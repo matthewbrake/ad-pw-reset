@@ -5,7 +5,9 @@ services:
     build: .
     container_name: azure-password-notifier
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      # HOST_PORT:CONTAINER_PORT
+      # This maps localhost:8085 to the container's internal port 3000
+      - "${WEB_PORT:-8085}:3000"
     environment:
       - NODE_ENV=production
       # Optional: Pre-seed credentials (safest to use .env file)
@@ -17,6 +19,6 @@ services:
       - SMTP_USERNAME=${SMTP_USERNAME}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
     volumes:
-      # Persist the configuration JSON
+      # Persist the configuration JSON so settings aren't lost on restart
       - ./config:/app/config
     restart: unless-stopped

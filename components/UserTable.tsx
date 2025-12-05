@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { User } from '../types';
 
@@ -32,6 +33,7 @@ const UserTable: React.FC<{ users: User[] }> = ({ users }) => {
   };
 
   const getStatus = (days: number) => {
+    if (days === 999) return { text: 'Never Expires', className: 'bg-blue-500/20 text-blue-400 border border-blue-500/30' };
     if (days <= 0) return { text: 'Expired', className: 'bg-red-500/20 text-red-400 border border-red-500/30' };
     if (days <= 7) return { text: 'Critical', className: 'bg-orange-500/20 text-orange-400 border border-orange-500/30' };
     if (days <= 14) return { text: 'Warning', className: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' };
@@ -72,6 +74,7 @@ const UserTable: React.FC<{ users: User[] }> = ({ users }) => {
             <tbody className="bg-gray-800 divide-y divide-gray-700">
                 {sortedUsers.map(user => {
                     const status = getStatus(user.passwordExpiresInDays);
+                    const isHybrid = user.onPremisesSyncEnabled === true;
                     return (
                         <tr key={user.id} className="hover:bg-gray-700/50 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{user.displayName}</td>
@@ -84,8 +87,11 @@ const UserTable: React.FC<{ users: User[] }> = ({ users }) => {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                 {user.passwordLastSetDateTime ? new Date(user.passwordLastSetDateTime).toLocaleDateString() : 'Never'}
+                                {isHybrid && <span className="ml-2 text-xs bg-gray-600 px-1.5 py-0.5 rounded text-gray-300" title="Synced from On-Premises AD">Hybrid</span>}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-white">{user.passwordExpiresInDays}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-white">
+                                {user.passwordExpiresInDays === 999 ? '∞' : user.passwordExpiresInDays}
+                            </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm">
                                 <span className={`px-3 py-1 text-xs font-semibold rounded-full ${status.className}`}>{status.text}</span>
                             </td>

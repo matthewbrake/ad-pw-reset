@@ -23,27 +23,31 @@ You can specify the port using the `PORT` environment variable.
 # Run on default port 3000
 npm start
 
-# Run on port 8080
-PORT=8080 npm start
+# Run on port 8085
+PORT=8085 npm start
 ```
 
 **Windows (PowerShell):**
 ```powershell
-# Run on port 8080
-$env:PORT=8080; npm start
+# Run on port 8085
+$env:PORT=8085; npm start
 ```
 
 ## 🐳 Docker Run
 
 ### Quick Start
+This will start the app on **Port 8085**.
+
 ```bash
 docker-compose up -d --build
 ```
 
-### Change Port (Env Var)
-To run the container on port **8080** instead of 3000:
+Access the app at: `http://localhost:8085`
+
+### Change Port
+If you want to change it from 8085 to something else (e.g., 9090):
 ```bash
-WEB_PORT=8080 docker-compose up -d
+WEB_PORT=9090 docker-compose up -d
 ```
 
 ## 🔑 Authentication & Permissions (How it works)

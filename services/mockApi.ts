@@ -1,4 +1,5 @@
-import { User, GraphApiConfig, SmtpConfig, NotificationProfile, LogEntry, PermissionResult } from '../types';
+
+import { User, GraphApiConfig, SmtpConfig, NotificationProfile, LogEntry, PermissionResult, JobResult } from '../types';
 
 // --- LOGGER SERVICE (Client Side View) ---
 let listeners: ((log: LogEntry) => void)[] = [];
@@ -70,20 +71,22 @@ export const testSmtpConnection = async (config: SmtpConfig): Promise<{ success:
     return result;
 };
 
-export const runNotificationJob = async (profileId: string, isTestRun: boolean = false, currentUserEmail: string = 'admin@local'): Promise<void> => {
-    log('info', `Triggering ${isTestRun ? 'TEST' : 'LIVE'} Job on Server...`);
+export const runNotificationJob = async (profile: NotificationProfile, mode: 'preview' | 'test' | 'live', currentUserEmail: string = 'admin@local'): Promise<JobResult> => {
+    log('info', `Triggering ${mode.toUpperCase()} Job on Server...`);
     
     const response = await fetch('/api/run-job', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profileId, isTestRun, testEmail: currentUserEmail })
+        body: JSON.stringify({ profile, mode, testEmail: currentUserEmail })
     });
     
-    const data = await response.json();
+    const data: JobResult = await response.json();
     
     if (data.logs && Array.isArray(data.logs)) {
         data.logs.forEach((l: any) => log(l.level, l.message, l.details));
     }
+
+    return data;
 };
 
 const MOCK_PROFILES_KEY = 'notification_profiles';

@@ -1,9 +1,11 @@
+
 export interface User {
   id: string;
   displayName: string;
   userPrincipalName: string;
   accountEnabled?: boolean; 
   passwordLastSetDateTime: string;
+  onPremisesSyncEnabled?: boolean; // Correct flag to identify Hybrid users
   passwordExpiresInDays: number;
   assignedGroups?: string[];
 }
@@ -42,6 +44,7 @@ export interface NotificationProfile {
     name: string;
     description: string;
     emailTemplate: string;
+    subjectLine: string;
     cadence: {
         daysBefore: number[];
     };
@@ -58,4 +61,15 @@ export interface LogEntry {
   level: 'info' | 'warn' | 'error' | 'success';
   message: string;
   details?: any;
+}
+
+export interface JobResult {
+    success: boolean;
+    logs: LogEntry[];
+    previewData?: {
+        user: string;
+        email: string;
+        daysUntilExpiry: number;
+        group: string;
+    }[];
 }

@@ -1,3 +1,4 @@
+
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -84,6 +85,61 @@ const getGraphToken = async () => {
     }
 };
 
+// --- HELPER: USER CALCULATIONS ---
+const calculateExpiry = (user, defaultDays) => {
+    const isHybrid = user.onPremisesSyncEnabled === true;
+    
+    // Use the standard lastPasswordChangeDateTime (which reflects on-prem changes for synced users)
+    // Fallback to createdDateTime if password was never changed
+    let lastSet = user.lastPasswordChangeDateTime || user.createdDateTime;
+    
+    if (!lastSet) {
+        return { 
+            ...user, 
+            passwordLastSetDateTime: null, 
+            passwordExpiresInDays: 999 
+        };
+    }
+
+    let expiryDate = new Date(lastSet);
+    
+    // Check policies
+    const policies = user.passwordPolicies || "";
+    const policySaysNeverExpires = policies.includes("DisablePasswordExpiration");
+    
+    // CRITICAL LOGIC: 
+    // If user is Hybrid (onPremisesSyncEnabled), Azure usually sets 'DisablePasswordExpiration' 
+    // because the cloud doesn't manage the expiry.
+    // We must IGNORE this flag for Hybrid users to calculate the true expiry based on the date.
+    
+    if (policySaysNeverExpires && !isHybrid) {
+         // It's a cloud-only user and actually set to never expire
+         return { ...user, passwordLastSetDateTime: lastSet, passwordExpiresInDays: 999 };
+    }
+
+    // Calculate Expiry
+    expiryDate.setDate(expiryDate.getDate() + defaultDays);
+    
+    const now = new Date();
+    const diffTime = expiryDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+
+    return {
+        ...user,
+        passwordLastSetDateTime: lastSet,
+        passwordExpiresInDays: diffDays
+    };
+};
+
+// --- HELPER: TEMPLATE REPLACEMENT ---
+const processTemplate = (template, user, days) => {
+    let output = template;
+    output = output.replace(/{{user.displayName}}/g, user.displayName);
+    output = output.replace(/{{user.userPrincipalName}}/g, user.userPrincipalName);
+    output = output.replace(/{{daysUntilExpiry}}/g, days.toString());
+    return output;
+};
+
 // --- API ROUTES ---
 
 // Save Config
@@ -110,11 +166,11 @@ app.get('/api/users', async (req, res) => {
     try {
         const token = await getGraphToken();
         
-        // Select specific fields for efficiency
+        // SELECT UPDATE: We now fetch onPremisesSyncEnabled
         const response = await axios.get('https://graph.microsoft.com/v1.0/users', {
             headers: { Authorization: `Bearer ${token}` },
             params: {
-                '$select': 'id,displayName,userPrincipalName,accountEnabled,passwordPolicies,lastPasswordChangeDateTime,createdDateTime',
+                '$select': 'id,displayName,userPrincipalName,accountEnabled,passwordPolicies,lastPasswordChangeDateTime,createdDateTime,onPremisesSyncEnabled',
                 '$top': 999
             }
         });
@@ -122,27 +178,15 @@ app.get('/api/users', async (req, res) => {
         const DEFAULT_EXPIRY_DAYS = parseInt(runtimeConfig.defaultExpiryDays) || 90;
         
         const users = response.data.value.map(u => {
-            let lastSet = u.lastPasswordChangeDateTime || u.createdDateTime; // Fallback to creation
-            let expiryDate = new Date(lastSet);
-            
-            // Check if password never expires
-            const policies = u.passwordPolicies || "";
-            const neverExpires = policies.includes("DisablePasswordExpiration");
-            
-            expiryDate.setDate(expiryDate.getDate() + DEFAULT_EXPIRY_DAYS);
-            
-            const now = new Date();
-            const diffTime = Math.abs(expiryDate - now);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-            const expiresInDays = neverExpires ? 999 : (expiryDate > now ? diffDays : -diffDays);
-
+            const calculated = calculateExpiry(u, DEFAULT_EXPIRY_DAYS);
             return {
                 id: u.id,
                 displayName: u.displayName,
                 userPrincipalName: u.userPrincipalName,
                 accountEnabled: u.accountEnabled,
-                passwordLastSetDateTime: lastSet,
-                passwordExpiresInDays: expiresInDays,
+                passwordLastSetDateTime: calculated.passwordLastSetDateTime,
+                onPremisesSyncEnabled: u.onPremisesSyncEnabled,
+                passwordExpiresInDays: calculated.passwordExpiresInDays,
                 assignedGroups: [] 
             };
         });
@@ -154,7 +198,7 @@ app.get('/api/users', async (req, res) => {
     }
 });
 
-// Validate Permissions (The Traffic Light System)
+// Validate Permissions
 app.post('/api/validate-permissions', async (req, res) => {
     const results = {
         auth: false,
@@ -219,68 +263,137 @@ app.post('/api/test-smtp', async (req, res) => {
     }
 });
 
-// Run Job (The "Daemon" Logic)
+// Run Job (The Logic Engine)
 app.post('/api/run-job', async (req, res) => {
-    const { profileId, isTestRun, testEmail } = req.body;
+    const { profile, mode, testEmail } = req.body; // mode: 'preview' | 'test' | 'live'
     const logs = [];
+    const previewData = [];
 
-    logs.push(log('info', `Starting ${isTestRun ? 'TEST' : 'LIVE'} Job`));
+    logs.push(log('info', `Starting Job for Profile: "${profile.name}" in ${mode.toUpperCase()} mode`));
 
     try {
         const token = await getGraphToken();
-        
-        // 1. Fetch Users
-        logs.push(log('info', 'Fetching users from Azure Graph...'));
-        const usersResp = await axios.get('https://graph.microsoft.com/v1.0/users?$select=displayName,userPrincipalName,lastPasswordChangeDateTime,accountEnabled', {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        const users = usersResp.data.value;
-        logs.push(log('success', `Fetched ${users.length} users.`));
+        const DEFAULT_EXPIRY_DAYS = parseInt(runtimeConfig.defaultExpiryDays) || 90;
 
-        // 2. Process (Mock Logic for demo - in real app, match profile ID to cadence)
-        let emailsSent = 0;
-        
-        // Setup Mailer
-        const transporter = nodemailer.createTransport({
-            host: runtimeConfig.smtp.host,
-            port: runtimeConfig.smtp.port,
-            secure: runtimeConfig.smtp.secure,
-            auth: { user: runtimeConfig.smtp.username, pass: runtimeConfig.smtp.password }
-        });
+        // 1. Identify Target Users based on Assigned Groups
+        logs.push(log('info', 'Calculating Target Audience...'));
+        let targetUserIds = new Set();
+        let targetUsers = [];
 
-        for (const user of users) {
-            // SAFEGUARD: Only process enabled accounts
-            if (!user.accountEnabled) continue;
+        // If 'All Users' is in the list, just fetch everyone
+        const isAllUsers = profile.assignedGroups.some(g => g.toLowerCase() === 'all users');
 
-            // Simplified selection logic for demo
-            if (emailsSent < 5) {
-                // SAFEGUARD: Override email if test run
-                const recipient = isTestRun ? testEmail : user.userPrincipalName;
-                
-                if (!recipient) continue;
-
-                logs.push(log('info', `Processing ${user.displayName}...`, { 
-                    realEmail: user.userPrincipalName, 
-                    targetEmail: recipient,
-                    mode: isTestRun ? 'TEST' : 'LIVE'
-                }));
-                
+        if (isAllUsers) {
+             const allUsersResp = await axios.get('https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,lastPasswordChangeDateTime,createdDateTime,accountEnabled,passwordPolicies,onPremisesSyncEnabled&$top=999', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            targetUsers = allUsersResp.data.value;
+            logs.push(log('info', `Scope: All Users (${targetUsers.length} found)`));
+        } else {
+            // Fetch users for specific groups
+            // First find group IDs by name
+            for (const groupName of profile.assignedGroups) {
                 try {
-                    await transporter.sendMail({
-                        from: runtimeConfig.smtp.fromEmail,
-                        to: recipient,
-                        subject: "Password Expiry Notice",
-                        text: `Hello ${user.displayName}, please change your password.`
+                    const groupSearch = await axios.get(`https://graph.microsoft.com/v1.0/groups?$filter=displayName eq '${groupName}'&$select=id`, {
+                         headers: { Authorization: `Bearer ${token}` }
                     });
-                    logs.push(log('success', `Email sent to ${recipient}`));
-                    emailsSent++;
+                    
+                    if (groupSearch.data.value.length > 0) {
+                        const groupId = groupSearch.data.value[0].id;
+                        // Fetch members (transitive)
+                        const membersResp = await axios.get(`https://graph.microsoft.com/v1.0/groups/${groupId}/transitiveMembers?$select=id,displayName,userPrincipalName,lastPasswordChangeDateTime,createdDateTime,accountEnabled,passwordPolicies,onPremisesSyncEnabled`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        
+                        // Filter only 'user' types (groups can contain other things)
+                        const userMembers = membersResp.data.value.filter(m => m['@odata.type'] === '#microsoft.graph.user');
+                        logs.push(log('info', `Group '${groupName}' has ${userMembers.length} users`));
+                        
+                        userMembers.forEach(u => {
+                            if (!targetUserIds.has(u.id)) {
+                                targetUserIds.add(u.id);
+                                targetUsers.push(u);
+                            }
+                        });
+                    } else {
+                        logs.push(log('warn', `Group '${groupName}' not found in Azure AD`));
+                    }
                 } catch (e) {
-                    logs.push(log('error', `Failed to send to ${recipient}`, e.message));
+                    logs.push(log('error', `Error fetching group '${groupName}'`, e.message));
                 }
             }
         }
 
-        res.json({ success: true, logs });
+        // 2. Process Users (Calculate Expiry & Check Cadence)
+        const triggerDays = new Set(profile.cadence.daysBefore);
+        let emailsSent = 0;
+        
+        // Setup Mailer (only needed if not preview)
+        let transporter;
+        if (mode !== 'preview') {
+            transporter = nodemailer.createTransport({
+                host: runtimeConfig.smtp.host,
+                port: runtimeConfig.smtp.port,
+                secure: runtimeConfig.smtp.secure,
+                auth: { user: runtimeConfig.smtp.username, pass: runtimeConfig.smtp.password }
+            });
+        }
+
+        for (const user of targetUsers) {
+            if (!user.accountEnabled) continue;
+
+            const userWithExpiry = calculateExpiry(user, DEFAULT_EXPIRY_DAYS);
+            const daysLeft = userWithExpiry.passwordExpiresInDays;
+
+            // CHECK: Is today one of the notification days?
+            if (triggerDays.has(daysLeft)) {
+                
+                // Found a match!
+                
+                if (mode === 'preview') {
+                    previewData.push({
+                        user: user.displayName,
+                        email: user.userPrincipalName,
+                        daysUntilExpiry: daysLeft,
+                        group: isAllUsers ? 'All Users' : 'Assigned Group'
+                    });
+                } else {
+                    // Send Email
+                    const recipient = mode === 'test' ? testEmail : user.userPrincipalName;
+                    
+                    if (recipient) {
+                        const subject = processTemplate(profile.subjectLine || "Password Expiry Notice", user, daysLeft);
+                        const body = processTemplate(profile.emailTemplate, user, daysLeft);
+
+                        logs.push(log('info', `Sending to ${user.displayName} (Expires in ${daysLeft} days)`, { 
+                            recipient,
+                            mode: mode.toUpperCase() 
+                        }));
+                        
+                        try {
+                            await transporter.sendMail({
+                                from: runtimeConfig.smtp.fromEmail,
+                                to: recipient,
+                                subject: subject,
+                                text: body
+                            });
+                            logs.push(log('success', `Email sent.`));
+                            emailsSent++;
+                        } catch (e) {
+                            logs.push(log('error', `Failed to send to ${recipient}`, e.message));
+                        }
+                    }
+                }
+            }
+        }
+
+        if (mode === 'preview') {
+            logs.push(log('success', `Preview Complete. Found ${previewData.length} users who would be emailed.`));
+        } else {
+            logs.push(log('success', `Job Complete. Sent ${emailsSent} emails.`));
+        }
+
+        res.json({ success: true, logs, previewData });
 
     } catch (e) {
         logs.push(log('error', "Job Failed", e.message));

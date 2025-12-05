@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { NotificationProfile } from '../types';
 
@@ -12,16 +13,15 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ profile, onSave, onClose 
     id: '',
     name: '',
     description: '',
-    emailTemplate: `Subject: Important: Your Password Will Expire Soon
+    subjectLine: 'Action Required: Password Expiry Warning',
+    emailTemplate: `Hi {{user.displayName}},
 
-Hi {{user.displayName}},
+Your password for {{user.userPrincipalName}} is set to expire in {{daysUntilExpiry}} days.
 
-This is a reminder that your password is scheduled to expire in {{password.expiresInDays}} days.
-
-Please reset your password before then to avoid any interruption to your access.
+Please reset it at https://passwordreset.microsoftonline.com
 
 Thanks,
-Your IT Team`,
+IT Support`,
     cadence: { daysBefore: [14, 7, 1] },
     recipients: { toUser: true, toManager: false, toAdmins: [] },
     assignedGroups: ['All Users'],
@@ -78,30 +78,44 @@ Your IT Team`,
                 <input type="text" value={formData.description} onChange={e => handleChange('description', e.target.value)} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-primary-500 focus:border-primary-500"/>
               </div>
                <div>
-                <label className="block text-sm font-medium text-gray-300">Assigned Groups</label>
+                <label className="block text-sm font-medium text-gray-300">Assigned Groups (Azure AD Group Names)</label>
                 <input type="text" value={formData.assignedGroups.join(', ')} onChange={handleAssignedGroupsChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-primary-500 focus:border-primary-500"/>
-                <p className="text-xs text-gray-500 mt-1">Comma-separated list of group names.</p>
+                <p className="text-xs text-gray-500 mt-1">Exact name of the Azure AD Group. Use "All Users" to check everyone.</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300">Notification Cadence (Days Before)</label>
+                <label className="block text-sm font-medium text-gray-300">Notification Cadence (Days Before Expiry)</label>
                 <input type="text" value={formData.cadence.daysBefore.join(', ')} onChange={handleCadenceChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-primary-500 focus:border-primary-500"/>
-                 <p className="text-xs text-gray-500 mt-1">Comma-separated list of days to send notifications.</p>
+                 <p className="text-xs text-gray-500 mt-1">Send email if days remaining matches these numbers exactly (e.g. 14, 7, 1).</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300">Recipients</label>
                 <div className="mt-2 space-y-2">
                     <div className="flex items-center"><input type="checkbox" name="toUser" checked={formData.recipients.toUser} onChange={handleRecipientChange} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-primary-600 focus:ring-primary-500" /><span className="ml-2 text-sm text-gray-300">Send to User</span></div>
-                    <div className="flex items-center"><input type="checkbox" name="toManager" checked={formData.recipients.toManager} onChange={handleRecipientChange} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-primary-600 focus:ring-primary-500" /><span className="ml-2 text-sm text-gray-300">Send to Manager</span></div>
+                    <div className="flex items-center"><input type="checkbox" name="toManager" checked={formData.recipients.toManager} onChange={handleRecipientChange} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-primary-600 focus:ring-primary-500" /><span className="ml-2 text-sm text-gray-300">Send to Manager (Coming Soon)</span></div>
                     <div>
                         <input type="text" name="toAdmins" placeholder="admin1@example.com, admin2@example.com" value={formData.recipients.toAdmins.join(', ')} onChange={handleRecipientChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-primary-500 focus:border-primary-500"/>
-                        <p className="text-xs text-gray-500 mt-1">Send to additional admins (comma-separated).</p>
+                        <p className="text-xs text-gray-500 mt-1">Send a copy to these admins.</p>
                     </div>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300">Email Template</label>
-                <textarea rows={10} value={formData.emailTemplate} onChange={e => handleChange('emailTemplate', e.target.value)} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"></textarea>
-                <p className="text-xs text-gray-500 mt-1">{`Available placeholders: '{{user.displayName}}', '{{user.userPrincipalName}}', '{{password.expiresInDays}}'`}</p>
+              
+              <div className="pt-4 border-t border-gray-700">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300">Email Subject Line</label>
+                    <input type="text" value={formData.subjectLine} onChange={e => handleChange('subjectLine', e.target.value)} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-primary-500 focus:border-primary-500"/>
+                  </div>
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-300">Email Body Template</label>
+                    <textarea rows={10} value={formData.emailTemplate} onChange={e => handleChange('emailTemplate', e.target.value)} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"></textarea>
+                    <div className="bg-gray-900 p-2 mt-2 rounded text-xs text-gray-400 font-mono">
+                        <p>Available Variables:</p>
+                        <ul className="list-disc pl-4 space-y-1 mt-1">
+                            <li>{'{{user.displayName}}'} - User's Full Name</li>
+                            <li>{'{{user.userPrincipalName}}'} - User's Email</li>
+                            <li>{'{{daysUntilExpiry}}'} - Number of days left</li>
+                        </ul>
+                    </div>
+                  </div>
               </div>
             </div>
           </div>

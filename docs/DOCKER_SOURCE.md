@@ -2,45 +2,31 @@
 
 Here is the logic used in the Dockerfile for this application.
 
-## 1. Build Stage
-We use `node:18-alpine` to install dependencies and compile the React application.
+## Single Stage: Node.js Server
+We now use a single `node:18-alpine` container. This handles both the React build process and serving the application via Express. This eliminates configuration errors associated with Nginx.
 
 ```dockerfile
-# Stage 1: Build the React Application
-FROM node:18-alpine as build
+# Use Node.js for both building and running (No Nginx)
+FROM node:18-alpine
 
-# Set the working directory inside the container
+# Set working directory
 WORKDIR /app
 
-# Copy dependency definitions
-COPY package.json package-lock.json* ./
+# Copy package files first to cache dependencies
+COPY package*.json ./
 
-# Install dependencies
+# Install all dependencies (including devDependencies for the build)
 RUN npm install
 
 # Copy the rest of the application code
 COPY . .
 
-# Build the static files (Output goes to /app/dist)
+# Build the React frontend (Outputs to /app/dist)
 RUN npm run build
-```
 
-## 2. Production Stage
-We use `nginx:alpine` to serve the static files generated in Stage 1. This is lightweight and performant.
+# Expose the internal port (Server.js listens on 3000 by default)
+EXPOSE 3000
 
-```dockerfile
-# Stage 2: Serve with Nginx
-FROM nginx:alpine
-
-# Copy the built files from Stage 1 to Nginx's HTML directory
-COPY --from=build /app/dist /usr/share/nginx/html
-
-# Copy our custom Nginx config (handles React Router/SPA history mode)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Expose port 80
-EXPOSE 80
-
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start the Node.js server which serves the frontend AND the API
+CMD ["node", "server.js"]
 ```
