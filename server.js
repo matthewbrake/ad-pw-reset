@@ -86,6 +86,20 @@ const getGraphToken = async () => {
 };
 
 // --- HELPER: USER CALCULATIONS ---
+/**
+ * CALCULATION LOGIC:
+ * Azure AD does NOT provide an "Expiry Date" field. We must calculate it.
+ * 
+ * Formula: ExpiryDate = lastPasswordChangeDateTime + defaultExpiryDays
+ * 
+ * Hybrid Users (Synced from On-Prem):
+ * - Azure sets 'DisablePasswordExpiration' policy by default because the cloud doesn't manage their expiry.
+ * - However, they DO expire on-prem.
+ * - THEREFORE: If (isHybrid == true), we IGNORE the 'DisablePasswordExpiration' flag and enforce the calculation.
+ * 
+ * Cloud Users:
+ * - We respect the 'DisablePasswordExpiration' flag.
+ */
 const calculateExpiry = (user, defaultDays) => {
     const isHybrid = user.onPremisesSyncEnabled === true;
     
@@ -106,11 +120,6 @@ const calculateExpiry = (user, defaultDays) => {
     // Check policies
     const policies = user.passwordPolicies || "";
     const policySaysNeverExpires = policies.includes("DisablePasswordExpiration");
-    
-    // CRITICAL LOGIC: 
-    // If user is Hybrid (onPremisesSyncEnabled), Azure usually sets 'DisablePasswordExpiration' 
-    // because the cloud doesn't manage the expiry.
-    // We must IGNORE this flag for Hybrid users to calculate the true expiry based on the date.
     
     if (policySaysNeverExpires && !isHybrid) {
          // It's a cloud-only user and actually set to never expire

@@ -1,62 +1,72 @@
+
 # Integrations Guide
 
-This application is designed to integrate with two key external services: **Microsoft Azure Active Directory (via the Graph API)** and an **SMTP Server**.
+This document details exactly how the application interacts with external services. Use this if you need to rebuild the backend logic in another language (C#, Python, etc.).
 
-## Microsoft Graph API Integration
+## 1. Microsoft Graph API
 
-The Graph API is the source of all user and password information.
+The application acts as a **Background Daemon** using the Client Credentials Flow.
 
-### Purpose
+### Authentication
+**Endpoint:** `POST https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token`
 
--   To fetch a list of users from your Azure AD tenant.
--   To retrieve critical user properties, including:
-    -   `id`
-    -   `displayName`
-    -   `userPrincipalName` (email)
-    -   `passwordLastSetDateTime`
--   To query for members of specific Azure AD groups for targeted notifications.
+**Payload:**
+```x-www-form-urlencoded
+client_id: {your_client_id}
+client_secret: {your_client_secret}
+scope: https://graph.microsoft.com/.default
+grant_type: client_credentials
+```
 
-### Setup and Configuration
+### Fetching Users
+This is the most critical query in the application.
 
-To allow the application to access this data, you must create an **App Registration** in your Azure AD tenant.
+**Endpoint:** `GET https://graph.microsoft.com/v1.0/users`
 
-1.  **Register an Application:** In the Azure Portal, go to **Azure Active Directory > App registrations > New registration**.
-2.  **API Permissions:** Grant your application the necessary permissions. The primary permission required is:
-    -   **`User.Read.All` (Application Permission):** This allows the application to read the full profile of all users in the organization without a signed-in user. This is necessary for a backend service that runs automatically. You will need an administrator to grant admin consent for this permission.
-3.  **Create a Client Secret:** Under **Certificates & secrets**, create a new client secret. **Copy this value immediately and store it securely.** You will not be able to view it again.
+**Headers:**
+`Authorization: Bearer {access_token}`
 
-The **Tenant ID**, **Application (client) ID**, and **Client Secret** are the three credentials that the backend service will use to authenticate with the Graph API. These are configured in the application's Settings page (and should be stored securely on the backend in a production environment).
+**Query Parameters:**
+We select specific fields to optimize performance and get the necessary sync data.
+```http
+$select=id,displayName,userPrincipalName,accountEnabled,passwordPolicies,lastPasswordChangeDateTime,createdDateTime,onPremisesSyncEnabled
+$top=999
+```
 
-## SMTP Server Integration
+**JSON Response Example:**
+```json
+{
+    "value": [
+        {
+            "id": "12345-abcde-...",
+            "displayName": "John Doe",
+            "userPrincipalName": "john.doe@company.com",
+            "accountEnabled": true,
+            "onPremisesSyncEnabled": true,  <-- CRITICAL: Identifies Hybrid User
+            "passwordPolicies": "DisablePasswordExpiration", <-- CRITICAL: Ignored if Hybrid
+            "lastPasswordChangeDateTime": "2023-10-25T12:00:00Z" <-- CRITICAL: Used for calculation
+        }
+    ]
+}
+```
 
-The application sends all email notifications via a standard SMTP server.
+### Fetching Group Members
+When filtering by group, the app resolves the group ID by name, then fetches members.
 
-### Purpose
+1. **Find Group ID:** `GET /groups?$filter=displayName eq 'My Group'&$select=id`
+2. **Get Members:** `GET /groups/{id}/transitiveMembers?$select=...`
 
--   To send password expiry warnings to end-users, their managers, and/or designated administrators.
--   To provide flexibility, allowing you to use any email service you prefer (e.g., Microsoft 365, SendGrid, Mailgun, or an internal mail relay).
+---
 
-### Configuration
+## 2. SMTP Integration
 
-The following SMTP settings are required, which are configurable on the Settings page:
+The app uses `nodemailer`.
 
--   **Host:** The address of your SMTP server (e.g., `smtp.office365.com`).
--   **Port:** The port number (e.g., `587` for TLS).
--   **Use SSL/TLS:** A boolean to enable encrypted communication.
--   **Username:** The username for authenticating with the SMTP server.
--   **Password:** The password for the SMTP account.
+**Configuration Required:**
+- Host (e.g., `smtp.office365.com`)
+- Port (e.g., `587`)
+- Secure (TLS/STARTTLS)
+- Auth User/Pass
 
-## Targeting Specific User Groups
-
-A key feature of this application is the ability to create different notification rules for different groups of users.
-
-This is achieved through the **"Assigned Groups"** field in a **Notification Profile**.
-
-### How it Works
-
-1.  When creating a Notification Profile, you can specify one or more Azure AD group names (e.g., "Developers", "Executives", "All Users").
-2.  The backend's scheduled task will read each profile.
-3.  For a given profile, it will use the Graph API to query for all members of the "Assigned Groups".
-4.  The notification rules (cadence, email template) from that profile are then applied *only* to the users found within those groups.
-
-This allows for granular control. For example, you can have a profile with an aggressive notification schedule for service accounts, and a more standard schedule for regular employees.
+**Standard Logic:**
+The app constructs an email using the template defined in the Profile, replacing variables `{{user.displayName}}`, `{{daysUntilExpiry}}`, etc., and sends it via the configured SMTP transport.
