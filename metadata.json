@@ -1,5 +1,5 @@
 {
-  "name": "Azure AD Password Expiry Notifier",
+  "name": "Azure AD Password Expiry Notifier v2",
   "description": "A web UI to connect to Azure AD via Graph API to monitor user password expiration dates. Configure SMTP settings and notification profiles to automatically send expiry warnings to users and administrators.",
   "requestFramePermissions": []
 }

@@ -1,12 +1,14 @@
 
 import React, { useState } from 'react';
-import { DashboardIcon, SettingsIcon, BellIcon, AzureIcon } from './components/icons';
+import { DashboardIcon, SettingsIcon, BellIcon, AzureIcon, ClockIcon, ClipboardListIcon } from './components/icons';
 import Dashboard from './components/Dashboard';
 import Settings from './components/Settings';
 import Profiles from './components/Profiles';
+import QueueViewer from './components/QueueViewer';
+import AuditLog from './components/AuditLog';
 import ConsoleLog from './components/ConsoleLog';
 
-type Tab = 'dashboard' | 'profiles' | 'settings';
+type Tab = 'dashboard' | 'profiles' | 'queue' | 'audit' | 'settings';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -18,6 +20,10 @@ const App: React.FC = () => {
         return <Dashboard />;
       case 'profiles':
         return <Profiles />;
+      case 'queue':
+        return <QueueViewer />;
+      case 'audit':
+        return <AuditLog />;
       case 'settings':
         return <Settings toggleConsole={() => setShowConsole(!showConsole)} />;
       default:
@@ -49,6 +55,8 @@ const App: React.FC = () => {
         <nav className="flex flex-col space-y-2">
           <NavItem tab="dashboard" icon={<DashboardIcon className="w-6 h-6" />} label="Dashboard" />
           <NavItem tab="profiles" icon={<BellIcon className="w-6 h-6" />} label="Notification Profiles" />
+          <NavItem tab="queue" icon={<ClockIcon className="w-6 h-6" />} label="Queue & Schedule" />
+          <NavItem tab="audit" icon={<ClipboardListIcon className="w-6 h-6" />} label="Audit Logs" />
           <NavItem tab="settings" icon={<SettingsIcon className="w-6 h-6" />} label="Settings" />
         </nav>
         

@@ -71,13 +71,13 @@ export const testSmtpConnection = async (config: SmtpConfig): Promise<{ success:
     return result;
 };
 
-export const runNotificationJob = async (profile: NotificationProfile, mode: 'preview' | 'test' | 'live', currentUserEmail: string = 'admin@local'): Promise<JobResult> => {
+export const runNotificationJob = async (profile: NotificationProfile, mode: 'preview' | 'test' | 'live', currentUserEmail: string = 'admin@local', scheduleTime?: string): Promise<JobResult> => {
     log('info', `Triggering ${mode.toUpperCase()} Job on Server...`);
     
     const response = await fetch('/api/run-job', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile, mode, testEmail: currentUserEmail })
+        body: JSON.stringify({ profile, mode, testEmail: currentUserEmail, scheduleTime })
     });
     
     const data: JobResult = await response.json();

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { subscribeToLogs } from '../services/mockApi';
 import { LogEntry } from '../types';
@@ -26,7 +27,7 @@ const ConsoleLog: React.FC<{ visible: boolean; onClose: () => void }> = ({ visib
             <div className="flex justify-between items-center px-4 py-2 bg-gray-800 border-b border-gray-700">
                 <span className="font-bold text-gray-300 flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                    System Console <span className="text-gray-500 font-normal">v1.0.0</span>
+                    System Console <span className="text-gray-500 font-normal">v2.1.0 (Audit & Scheduling)</span>
                 </span>
                 <div className="flex space-x-2">
                     <button onClick={() => setLogs([])} className="text-gray-400 hover:text-white px-2">Clear</button>

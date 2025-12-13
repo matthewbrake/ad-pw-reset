@@ -66,8 +66,9 @@ const UserTable: React.FC<{ users: User[] }> = ({ users }) => {
                     <TableHeader columnKey="displayName" label="Display Name" />
                     <TableHeader columnKey="userPrincipalName" label="Email" />
                     <TableHeader columnKey="accountEnabled" label="Enabled" />
-                    <TableHeader columnKey="passwordLastSetDateTime" label="Password Last Set" />
-                    <TableHeader columnKey="passwordExpiresInDays" label="Expires In (Days)" />
+                    <TableHeader columnKey="passwordLastSetDateTime" label="Last Set" />
+                    <TableHeader columnKey="passwordExpiryDate" label="Expires On" /> 
+                    <TableHeader columnKey="passwordExpiresInDays" label="Days Left" />
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
                 </tr>
             </thead>
@@ -88,6 +89,9 @@ const UserTable: React.FC<{ users: User[] }> = ({ users }) => {
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                 {user.passwordLastSetDateTime ? new Date(user.passwordLastSetDateTime).toLocaleDateString() : 'Never'}
                                 {isHybrid && <span className="ml-2 text-xs bg-gray-600 px-1.5 py-0.5 rounded text-gray-300" title="Synced from On-Premises AD">Hybrid</span>}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                {user.passwordExpiryDate ? new Date(user.passwordExpiryDate).toLocaleDateString() : '-'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-white">
                                 {user.passwordExpiresInDays === 999 ? '∞' : user.passwordExpiresInDays}

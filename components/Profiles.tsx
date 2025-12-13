@@ -3,7 +3,68 @@ import React, { useState, useEffect } from 'react';
 import { NotificationProfile } from '../types';
 import { fetchProfiles, saveProfile, deleteProfile, runNotificationJob } from '../services/mockApi';
 import ProfileEditor from './ProfileEditor';
-import { BellIcon, EditIcon, PlusCircleIcon, TrashIcon, SearchIcon } from './icons';
+import { BellIcon, EditIcon, PlusCircleIcon, TrashIcon, SearchIcon, ClockIcon } from './icons';
+
+interface ScheduleModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: (dateIso: string) => void;
+}
+
+const ScheduleModal: React.FC<ScheduleModalProps> = ({ isOpen, onClose, onConfirm }) => {
+    const [dateValue, setDateValue] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            // Set default to now + 10 minutes, adjusted for local time input format
+            const now = new Date();
+            now.setMinutes(now.getMinutes() + 10);
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); // Adjust for local input
+            setDateValue(now.toISOString().slice(0, 16));
+        }
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] backdrop-blur-sm">
+            <div className="bg-gray-800 p-6 rounded-lg shadow-2xl border border-gray-700 w-full max-w-md">
+                <div className="flex items-center gap-3 mb-4 text-purple-400">
+                    <ClockIcon className="w-6 h-6" />
+                    <h3 className="text-xl font-bold text-white">Schedule Execution</h3>
+                </div>
+                
+                <p className="text-gray-400 text-sm mb-6">
+                    Select the exact date and time when these emails should be sent. 
+                    The job will be added to the queue and processed automatically by the background worker.
+                </p>
+                
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Start Date & Time</label>
+                <input 
+                    type="datetime-local" 
+                    value={dateValue}
+                    onChange={(e) => setDateValue(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-600 rounded-md p-3 text-white focus:ring-2 focus:ring-purple-500 focus:outline-none mb-6"
+                />
+
+                <div className="flex justify-end space-x-3">
+                    <button 
+                        onClick={onClose} 
+                        className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={() => onConfirm(new Date(dateValue).toISOString())}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded font-bold shadow-lg shadow-purple-900/50 transition-all"
+                    >
+                        Confirm Schedule
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const Profiles: React.FC = () => {
     const [profiles, setProfiles] = useState<NotificationProfile[]>([]);
@@ -12,6 +73,10 @@ const Profiles: React.FC = () => {
     const [selectedProfile, setSelectedProfile] = useState<NotificationProfile | null>(null);
     const [runningId, setRunningId] = useState<string | null>(null);
     
+    // Scheduling State
+    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    const [profileToSchedule, setProfileToSchedule] = useState<NotificationProfile | null>(null);
+
     // Preview Modal State
     const [previewData, setPreviewData] = useState<any[] | null>(null);
 
@@ -50,10 +115,23 @@ const Profiles: React.FC = () => {
         loadProfiles(); // Refresh list
     };
 
-    const handleRun = async (profile: NotificationProfile, mode: 'preview' | 'test' | 'live') => {
+    const openScheduleModal = (profile: NotificationProfile) => {
+        setProfileToSchedule(profile);
+        setIsScheduleModalOpen(true);
+    };
+
+    const handleConfirmSchedule = async (dateIso: string) => {
+        setIsScheduleModalOpen(false);
+        if (profileToSchedule) {
+            await handleRun(profileToSchedule, 'live', dateIso);
+        }
+        setProfileToSchedule(null);
+    };
+
+    const handleRun = async (profile: NotificationProfile, mode: 'preview' | 'test' | 'live', scheduleTime?: string) => {
         setRunningId(profile.id);
-        
-        if (mode === 'live') {
+
+        if (mode === 'live' && !scheduleTime) {
             const confirm = window.confirm('Are you sure you want to send REAL emails to users? This cannot be undone.');
             if (!confirm) {
                 setRunningId(null);
@@ -62,13 +140,14 @@ const Profiles: React.FC = () => {
         }
 
         try {
-            const result = await runNotificationJob(profile, mode, 'admin@localhost');
+            const result = await runNotificationJob(profile, mode, 'admin@localhost', scheduleTime);
             
             if (mode === 'preview' && result.previewData) {
                 setPreviewData(result.previewData);
             } else {
-                if (mode === 'test') alert('Test Run sent to Admin email. Check console logs.');
-                if (mode === 'live') alert('Live Run Complete. Emails sent.');
+                if (scheduleTime) alert('Job Scheduled Successfully! Check the "Queue" tab.');
+                else if (mode === 'test') alert('Test Run sent to Admin email. Check console logs.');
+                else if (mode === 'live') alert('Live Run Complete. Emails sent.');
             }
         } catch (e) {
             alert('Job failed check console');
@@ -128,15 +207,24 @@ const Profiles: React.FC = () => {
                                         title="See who would get an email without sending"
                                     >
                                         <SearchIcon className="w-3 h-3" />
-                                        Preview List
+                                        Preview
                                     </button>
                                      <button 
-                                        onClick={() => handleRun(profile, 'test')} 
+                                        onClick={() => openScheduleModal(profile)} 
                                         disabled={runningId === profile.id}
-                                        className="px-3 py-1 bg-yellow-900/30 text-yellow-500 hover:bg-yellow-900/50 text-xs rounded border border-yellow-800 disabled:opacity-50"
-                                        title="Send emails only to Admin"
+                                        className="px-3 py-1 bg-purple-900/30 text-purple-400 hover:bg-purple-900/50 text-xs rounded border border-purple-800 disabled:opacity-50 flex items-center gap-2"
+                                        title="Schedule for later"
                                     >
-                                        Run Test
+                                        <ClockIcon className="w-3 h-3" />
+                                        Schedule
+                                    </button>
+                                     <button 
+                                        onClick={() => handleRun(profile, 'live')} 
+                                        disabled={runningId === profile.id}
+                                        className="px-3 py-1 bg-red-900/30 text-red-500 hover:bg-red-900/50 text-xs rounded border border-red-800 disabled:opacity-50"
+                                        title="Send REAL emails to users immediately"
+                                    >
+                                        Run Live
                                     </button>
                                 </div>
                                 <div className="flex justify-end space-x-2">
@@ -153,6 +241,12 @@ const Profiles: React.FC = () => {
                 </div>
             )}
             
+            <ScheduleModal 
+                isOpen={isScheduleModalOpen}
+                onClose={() => setIsScheduleModalOpen(false)}
+                onConfirm={handleConfirmSchedule}
+            />
+
             {isEditorOpen && (
                 <ProfileEditor
                     profile={selectedProfile}
@@ -162,7 +256,7 @@ const Profiles: React.FC = () => {
             )}
 
             {previewData && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[70]">
                     <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
                         <div className="p-6 border-b border-gray-700 flex justify-between">
                             <h3 className="text-xl font-bold text-white">Preview Run Results</h3>
@@ -177,8 +271,9 @@ const Profiles: React.FC = () => {
                                         <tr>
                                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">User</th>
                                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Email</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Expires In</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Group Found</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Expires On</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">In Days</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Group</th>
                                         </tr>
                                     </thead>
                                     <tbody className="bg-gray-800 divide-y divide-gray-700">
@@ -186,7 +281,8 @@ const Profiles: React.FC = () => {
                                             <tr key={i}>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-white">{d.user}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">{d.email}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-yellow-500">{d.daysUntilExpiry} days</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{d.expiryDate ? new Date(d.expiryDate).toLocaleDateString() : '-'}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-yellow-500">{d.daysUntilExpiry}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">{d.group}</td>
                                             </tr>
                                         ))}

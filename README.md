@@ -1,76 +1,57 @@
+
 # Azure AD Password Expiry Notifier
 
 A web application to monitor Azure Active Directory user password expirations and send configurable email notifications.
 
-## ⚡️ Manual Run (NPM) - Copy & Paste
+## 🐳 Docker Deployment (Production)
 
-If you do not want to use Docker, you can run this directly on your machine using Node.js.
+To deploy using Docker, you must first extract the Dockerfile from the documentation.
 
-### 1. Install & Build
+### 1. Prepare Dockerfile
+Run this command in the project root:
 ```bash
-# Install dependencies
-npm install
-
-# Build the frontend (React -> static files)
-npm run build
+cp ./docs/Dockerfile.md Dockerfile
 ```
 
-### 2. Run the Server
-You can specify the port using the `PORT` environment variable.
-
-**Linux/Mac:**
-```bash
-# Run on default port 3000
-npm start
-
-# Run on port 8085
-PORT=8085 npm start
-```
-
-**Windows (PowerShell):**
-```powershell
-# Run on port 8085
-$env:PORT=8085; npm start
-```
-
-## 🐳 Docker Run
-
-### Quick Start
-This will start the app on **Port 8085**.
-
+### 2. Build & Run
 ```bash
 docker-compose up -d --build
 ```
+The app will be available at `http://localhost:8085` (or the port defined in docker-compose.yml).
 
-Access the app at: `http://localhost:8085`
+## ⚡️ Manual Run (NPM)
 
-### Change Port
-If you want to change it from 8085 to something else (e.g., 9090):
+### 1. Install & Build
 ```bash
-WEB_PORT=9090 docker-compose up -d
+npm install
+npm run build
 ```
 
-## 🔑 Authentication & Permissions (How it works)
+### 2. Run Server
+```bash
+# Linux/Mac
+PORT=8085 npm start
 
-This app runs as a **Background Service** (Daemon). It does not use your personal user account to run the daily checks; it uses an **App Registration**.
+# Windows (PowerShell)
+$env:PORT=8085; npm start
+```
 
-### 1. The "Sign In" Button (Admin Consent)
-In the **Settings** tab, there is a **"Grant Admin Consent"** button.
-*   **What it does:** It opens a Microsoft popup where you sign in as a Global Admin.
-*   **Why:** You click "Accept" once. This gives the *App Registration* permission to read users.
-*   **Result:** You can now close the browser, and the app will still work 24/7 because it uses the Client Secret to "login" as the App itself.
+## 🔑 Authentication & Permissions
 
-### 2. Required Permissions
-The app needs these **Application Permissions** (not Delegated):
-*   `User.Read.All` (To calculate password expiry)
-*   `Group.Read.All` (To filter by assigned groups)
+This app runs as a **Background Service** (Daemon) using the **Client Credentials Flow**. It does not run as "You".
 
-### 3. Traffic Light System
-The Settings page has a "Validate" button that checks 3 things:
-1.  **Auth:** Are Client ID/Secret correct?
-2.  **User Read:** Can the app read users?
-3.  **Group Read:** Can the app read groups?
+1.  **Register App:** Create an App Registration in Azure AD.
+2.  **Permissions:** Add `User.Read.All` and `Group.Read.All` (Application Permissions).
+3.  **Grant Consent:**
+    *   Go to the **Settings** tab in this web app.
+    *   Enter your Client ID and Tenant ID.
+    *   Click the **"Grant Admin Consent"** link.
+    *   Sign in with your Admin account and click "Accept".
+    *   **Result:** The App now has permission to read users 24/7 without your account being signed in.
 
-## 🛡 Safeguards
-*   **Test Mode:** When running a "Test" profile, emails are **forced** to the Admin email defined in the settings. They are NOT sent to real users.
-*   **Logs:** Click "Show Console" in the bottom left to see the live logic execution.
+## 🛡 Safety Features
+
+*   **Read-Only:** The app only performs `GET` requests against Azure AD. It cannot modify users or reset passwords.
+*   **Test Mode:** Use "Test Run" to send emails *only* to yourself (the Admin email) to verify formatting.
+*   **Freshness:** Every time an email job runs, the system re-calculates the expiration date in real-time to ensure accuracy.
+*   **Retry Limit:** The queue worker will attempt to send an email 3 times before marking it as "Failed" to prevent infinite loops.
