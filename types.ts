@@ -7,7 +7,8 @@ export interface User {
   passwordLastSetDateTime: string;
   onPremisesSyncEnabled?: boolean;
   passwordExpiresInDays: number;
-  passwordExpiryDate: string; 
+  passwordExpiryDate: string | null; 
+  neverExpires: boolean; // NEW: Track the DisablePasswordExpiration policy explicitly
   assignedGroups?: string[];
 }
 
@@ -16,6 +17,11 @@ export interface GraphApiConfig {
   clientId: string;
   clientSecret: string;
   defaultExpiryDays?: number;
+  _envStatus?: {
+      tenantId: boolean;
+      clientId: boolean;
+      smtp: boolean;
+  };
 }
 
 export interface PermissionResult {
@@ -34,19 +40,13 @@ export interface SmtpConfig {
   fromEmail: string;
 }
 
-export enum Cadence {
-    DAILY = 'Daily',
-    WEEKLY = 'Weekly',
-    MONTHLY = 'Monthly'
-}
-
 export interface NotificationProfile {
     id: string;
     name: string;
     description: string;
     emailTemplate: string;
     subjectLine: string;
-    preferredTime?: string; // Format: "HH:mm" (24h)
+    preferredTime?: string; 
     cadence: {
         daysBefore: number[];
     };
@@ -54,7 +54,7 @@ export interface NotificationProfile {
         toUser: boolean;
         toManager: boolean;
         toAdmins: string[];
-        readReceipt: boolean; // New field
+        readReceipt: boolean;
     };
     assignedGroups: string[];
 }
@@ -76,24 +76,4 @@ export interface JobResult {
         expiryDate: string;
         group: string;
     }[];
-}
-
-export interface QueueItem {
-    id: string;
-    scheduledFor: string; // ISO Date
-    recipient: string;
-    subject: string;
-    body: string;
-    profileName: string;
-    status: 'pending' | 'sending' | 'failed';
-    retries: number;
-    readReceipt?: boolean;
-}
-
-export interface HistoryEntry {
-    date: string;
-    email: string;
-    profileId: string;
-    status: 'sent' | 'skipped';
-    timestamp?: string;
 }

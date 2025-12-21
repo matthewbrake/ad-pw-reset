@@ -1,57 +1,37 @@
 
-# Azure AD Password Expiry Notifier
+# Azure AD Password Expiry Notifier (Enterprise Edition)
 
-A web application to monitor Azure Active Directory user password expirations and send configurable email notifications.
+A professional-grade system for automated password expiration monitoring and notification in Hybrid Azure AD environments.
 
-## 🐳 Docker Deployment (Production)
+## 🚀 Key Features
+- **Unified Data Root**: Single volume mount (`./data`) for all persistence (config, logs, history).
+- **Dual-Source Configuration**: Support for both `.env` variables and a persistent JSON database via the Web UI.
+- **Advanced Expiry Logic**: Intelligent calculation for Hybrid users, respecting on-prem sync state over cloud policies.
+- **Enterprise Observability**: Real-time system console with sub-millisecond precision and file-based logging.
+- **Profile Portability**: Export and import notification logic as standardized JSON.
+- **Safety First**: Integrated Preview Mode to visualize impact before sending a single byte of email.
 
-To deploy using Docker, you must first extract the Dockerfile from the documentation.
+## 🐳 Docker Architecture
+The recommended deployment uses a single root volume for all persistent data.
 
-### 1. Prepare Dockerfile
-Run this command in the project root:
-```bash
-cp ./docs/Dockerfile.md Dockerfile
+```yaml
+services:
+  notifier:
+    image: ad-notifier:latest
+    ports:
+      - "8085:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - AZURE_TENANT_ID=your_tenant
+      - AZURE_CLIENT_ID=your_id
+      - AZURE_CLIENT_SECRET=your_secret
 ```
 
-### 2. Build & Run
-```bash
-docker-compose up -d --build
-```
-The app will be available at `http://localhost:8085` (or the port defined in docker-compose.yml).
+## 📂 Directory Structure
+- `/data/config/`: Configuration, Queue, and Notification Profiles.
+- `/data/logs/`: Raw server execution logs (`server.log`).
+- `/data/exports/`: Manual and scheduled CSV/JSON data exports.
 
-## ⚡️ Manual Run (NPM)
-
-### 1. Install & Build
-```bash
-npm install
-npm run build
-```
-
-### 2. Run Server
-```bash
-# Linux/Mac
-PORT=8085 npm start
-
-# Windows (PowerShell)
-$env:PORT=8085; npm start
-```
-
-## 🔑 Authentication & Permissions
-
-This app runs as a **Background Service** (Daemon) using the **Client Credentials Flow**. It does not run as "You".
-
-1.  **Register App:** Create an App Registration in Azure AD.
-2.  **Permissions:** Add `User.Read.All` and `Group.Read.All` (Application Permissions).
-3.  **Grant Consent:**
-    *   Go to the **Settings** tab in this web app.
-    *   Enter your Client ID and Tenant ID.
-    *   Click the **"Grant Admin Consent"** link.
-    *   Sign in with your Admin account and click "Accept".
-    *   **Result:** The App now has permission to read users 24/7 without your account being signed in.
-
-## 🛡 Safety Features
-
-*   **Read-Only:** The app only performs `GET` requests against Azure AD. It cannot modify users or reset passwords.
-*   **Test Mode:** Use "Test Run" to send emails *only* to yourself (the Admin email) to verify formatting.
-*   **Freshness:** Every time an email job runs, the system re-calculates the expiration date in real-time to ensure accuracy.
-*   **Retry Limit:** The queue worker will attempt to send an email 3 times before marking it as "Failed" to prevent infinite loops.
+## 🛡 Security
+Secrets are never logged to the console or log files. The Web UI masks secrets with `********` when transmitting back to the browser.
