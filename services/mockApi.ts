@@ -1,7 +1,6 @@
 
 import { User, GraphApiConfig, SmtpConfig, NotificationProfile, LogEntry, PermissionResult, JobResult } from '../types';
 
-// --- LOGGER SERVICE (Client Side View) ---
 let listeners: ((log: LogEntry) => void)[] = [];
 
 export const log = (level: LogEntry['level'], message: string, details?: any) => {
@@ -19,18 +18,19 @@ export const subscribeToLogs = (listener: (log: LogEntry) => void) => {
     return () => { listeners = listeners.filter(l => l !== listener); };
 };
 
-// --- API CLIENT ---
-
 export const fetchUsers = async (config: GraphApiConfig): Promise<User[]> => {
   log('info', 'Requesting User list from Backend...');
   try {
     const response = await fetch('/api/users');
-    if (!response.ok) throw new Error('Failed to fetch users from backend');
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Server Error (${response.status}): ${errText}`);
+    }
     const data = await response.json();
     log('success', `Retrieved ${data.length} users.`);
     return data;
-  } catch (error) {
-    log('error', 'Fetch Users Failed', error);
+  } catch (error: any) {
+    log('error', 'Fetch Users Failed', error.message);
     throw error;
   }
 };
@@ -46,21 +46,17 @@ export const saveBackendConfig = async (config: GraphApiConfig, smtp: SmtpConfig
 };
 
 export const validateGraphPermissions = async (config: GraphApiConfig): Promise<{ success: boolean; results?: PermissionResult; message: string }> => {
-  await saveBackendConfig(config, { host: '', port: 0, secure: false, username: '', password: '', fromEmail: '' });
-  
   log('info', 'Validating Permissions on Backend...');
   const response = await fetch('/api/validate-permissions', { method: 'POST' });
   const result = await response.json();
   
-  if (result.success) log('success', result.message);
-  else log('error', result.message);
+  if (result.success) log('success', result.message || 'Permissions OK');
+  else log('error', result.message || 'Permission check failed');
   
   return result;
 };
 
 export const testSmtpConnection = async (config: SmtpConfig): Promise<{ success: boolean; message: string }> => {
-    await saveBackendConfig({ tenantId: '', clientId: '', clientSecret: '' }, config);
-
     log('info', 'Testing SMTP...');
     const response = await fetch('/api/test-smtp', { method: 'POST' });
     const result = await response.json();
@@ -74,19 +70,23 @@ export const testSmtpConnection = async (config: SmtpConfig): Promise<{ success:
 export const runNotificationJob = async (profile: NotificationProfile, mode: 'preview' | 'test' | 'live', currentUserEmail: string = 'admin@local', scheduleTime?: string): Promise<JobResult> => {
     log('info', `Triggering ${mode.toUpperCase()} Job on Server...`);
     
-    const response = await fetch('/api/run-job', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile, mode, testEmail: currentUserEmail, scheduleTime })
-    });
-    
-    const data: JobResult = await response.json();
-    
-    if (data.logs && Array.isArray(data.logs)) {
-        data.logs.forEach((l: any) => log(l.level, l.message, l.details));
+    try {
+        const response = await fetch('/api/run-job', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profile, mode, testEmail: currentUserEmail, scheduleTime })
+        });
+        
+        const data: JobResult = await response.json();
+        
+        if (data.logs && Array.isArray(data.logs)) {
+            data.logs.forEach((l: any) => log(l.level, l.message, l.details));
+        }
+        return data;
+    } catch (e: any) {
+        log('error', 'Network Error running job', e.message);
+        throw e;
     }
-
-    return data;
 };
 
 const MOCK_PROFILES_KEY = 'notification_profiles';
