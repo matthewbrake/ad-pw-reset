@@ -35,9 +35,23 @@ const QUEUE_FILE = path.join(CONFIG_DIR, 'queue.json');
 const PROFILES_FILE = path.join(CONFIG_DIR, 'notification-profiles.json');
 const SERVER_LOG_FILE = path.join(LOGS_DIR, 'server.log');
 
-// Initialize files
+// --- SAFE FILE HANDLING ---
 const initFile = (filePath, content) => {
-    if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, JSON.stringify(content, null, 2));
+    if (!fs.existsSync(filePath) || fs.readFileSync(filePath, 'utf-8').trim() === "") {
+        fs.writeFileSync(filePath, JSON.stringify(content, null, 2));
+    }
+};
+
+const readJsonSafe = (filePath, defaultValue = []) => {
+    try {
+        if (!fs.existsSync(filePath)) return defaultValue;
+        const content = fs.readFileSync(filePath, 'utf-8').trim();
+        if (!content) return defaultValue;
+        return JSON.parse(content);
+    } catch (e) {
+        console.error(`Error reading ${filePath}:`, e.message);
+        return defaultValue;
+    }
 };
 
 initFile(HISTORY_FILE, []);
@@ -76,18 +90,13 @@ let runtimeConfig = {
 };
 
 const syncConfig = () => {
-    if (fs.existsSync(CONFIG_FILE)) {
-        try {
-            const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-            // Deep merge logic: UI Config overrides ENV if saved on disk
-            runtimeConfig = { 
-                ...runtimeConfig, 
-                ...saved, 
-                smtp: { ...runtimeConfig.smtp, ...(saved.smtp || {}) } 
-            };
-        } catch (e) {
-            fileLog('error', "Config sync failure", e.message);
-        }
+    const saved = readJsonSafe(CONFIG_FILE, null);
+    if (saved) {
+        runtimeConfig = { 
+            ...runtimeConfig, 
+            ...saved, 
+            smtp: { ...runtimeConfig.smtp, ...(saved.smtp || {}) } 
+        };
     }
     return runtimeConfig;
 };
@@ -101,7 +110,6 @@ app.get('/api/config', (req, res) => {
     const masked = JSON.parse(JSON.stringify(config));
     if (masked.clientSecret) masked.clientSecret = '********';
     if (masked.smtp.password) masked.smtp.password = '********';
-    // Add flags to tell UI which fields came from ENV for visual badges
     res.json({
         ...masked,
         _envStatus: {
@@ -117,7 +125,6 @@ app.post('/api/config', (req, res) => {
         const update = req.body;
         const current = syncConfig();
         
-        // Handle Masking
         if (update.clientSecret === '********') update.clientSecret = current.clientSecret;
         if (update.smtp?.password === '********') update.smtp.password = current.smtp.password;
 
@@ -130,12 +137,8 @@ app.post('/api/config', (req, res) => {
     }
 });
 
-// PROFILE MANAGEMENT (Server Side)
 app.get('/api/profiles', (req, res) => {
-    try {
-        const data = JSON.parse(fs.readFileSync(PROFILES_FILE, 'utf-8'));
-        res.json(data);
-    } catch (e) { res.json([]); }
+    res.json(readJsonSafe(PROFILES_FILE, []));
 });
 
 app.post('/api/profiles', (req, res) => {
@@ -167,16 +170,17 @@ app.get('/api/users', async (req, res) => {
         const users = response.data.value.map(u => {
             const isHybrid = u.onPremisesSyncEnabled === true;
             const policies = u.passwordPolicies || "";
-            const neverExpires = policies.includes("DisablePasswordExpiration");
+            const neverExpiresFlag = policies.includes("DisablePasswordExpiration");
             
             let lastSet = u.lastPasswordChangeDateTime || u.createdDateTime;
-            if (!lastSet) return { ...u, passwordExpiresInDays: 999, neverExpires: true };
+            if (!lastSet) return { ...u, passwordExpiresInDays: 999, neverExpires: true, passwordLastSetDateTime: null, passwordExpiryDate: null };
 
             let expiryDate = new Date(lastSet);
-            // If cloud-only and policy says never, then never. 
-            // If hybrid, usually on-prem policy applies, but we use default days as a fallback/check
-            if (neverExpires && !isHybrid) {
-                 return { ...u, passwordExpiresInDays: 999, neverExpires: true, passwordExpiryDate: null };
+            // v2.2.0 Hybrid Logic: Hybrid users follow default expiry even if flag says never
+            const effectiveNeverExpires = neverExpiresFlag && !isHybrid;
+
+            if (effectiveNeverExpires) {
+                 return { ...u, passwordLastSetDateTime: lastSet, passwordExpiresInDays: 999, neverExpires: true, passwordExpiryDate: null };
             }
 
             expiryDate.setDate(expiryDate.getDate() + (config.defaultExpiryDays || 90));
@@ -187,7 +191,7 @@ app.get('/api/users', async (req, res) => {
                 passwordLastSetDateTime: lastSet,
                 passwordExpiresInDays: diffDays,
                 passwordExpiryDate: expiryDate.toISOString(),
-                neverExpires: neverExpires
+                neverExpires: false
             };
         });
         res.json(users);
@@ -197,9 +201,8 @@ app.get('/api/users', async (req, res) => {
     }
 });
 
-// JOB RUNNER & QUEUE (Functional but standardized)
-app.get('/api/queue', (req, res) => res.json(JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf-8'))));
-app.get('/api/history', (req, res) => res.json(JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8')).reverse()));
+app.get('/api/queue', (req, res) => res.json(readJsonSafe(QUEUE_FILE, [])));
+app.get('/api/history', (req, res) => res.json(readJsonSafe(HISTORY_FILE, []).reverse()));
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
